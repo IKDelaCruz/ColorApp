@@ -14,6 +14,7 @@ import android.webkit.JavascriptInterface
 import android.webkit.MimeTypeMap
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -23,14 +24,24 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -39,6 +50,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.itdcsystems.color.ui.theme.ColorSplashTheme
 import java.io.OutputStream
@@ -60,6 +75,7 @@ private const val COLOR_URL = "https://color.itdcsystems.com/"
 @Composable
 fun ColorSplashApp() {
     var isLoading by remember { mutableStateOf(true) }
+    var isOffline by remember { mutableStateOf(false) }
     var loadingProgress by remember { mutableIntStateOf(0) }
     var webView by remember { mutableStateOf<WebView?>(null) }
 
@@ -76,13 +92,23 @@ fun ColorSplashApp() {
         ColorSplashWebView(
             url = COLOR_URL,
             onWebViewCreated = { webView = it },
-            onPageStarted = { isLoading = true },
+            onPageStarted = { url ->
+                if (url != null && url != "about:blank") {
+                    isLoading = true
+                    isOffline = false
+                }
+            },
             onPageFinished = { isLoading = false },
-            onProgress = { loadingProgress = it }
+            onProgress = { loadingProgress = it },
+            onNetworkError = {
+                isOffline = true
+                isLoading = false
+            }
         )
 
+        // Progress bar
         AnimatedVisibility(
-            visible = isLoading,
+            visible = isLoading && !isOffline,
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.TopCenter)
         ) {
@@ -91,6 +117,71 @@ fun ColorSplashApp() {
                 modifier = Modifier.fillMaxWidth(),
                 color = MaterialTheme.colorScheme.primary,
                 trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+            )
+        }
+
+        // Offline screen
+        AnimatedVisibility(
+            visible = isOffline,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            OfflineScreen(onRetry = { webView?.reload() })
+        }
+    }
+}
+
+@Composable
+fun OfflineScreen(onRetry: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = "\uD83C\uDFA8",
+            fontSize = 72.sp
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "Oops! No Internet",
+            style = MaterialTheme.typography.headlineLarge,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Text(
+            text = "We need the internet to load your\ncoloring pages. Check your Wi-Fi\nand try again!",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+            textAlign = TextAlign.Center,
+            lineHeight = 24.sp
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        Button(
+            onClick = onRetry,
+            shape = RoundedCornerShape(24.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary
+            ),
+            modifier = Modifier
+                .fillMaxWidth(0.6f)
+                .height(52.dp)
+        ) {
+            Text(
+                text = "Try Again",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold
             )
         }
     }
@@ -195,9 +286,10 @@ class ImageSaver(private val activity: ComponentActivity) {
 fun ColorSplashWebView(
     url: String,
     onWebViewCreated: (WebView) -> Unit,
-    onPageStarted: () -> Unit,
+    onPageStarted: (String?) -> Unit,
     onPageFinished: () -> Unit,
     onProgress: (Int) -> Unit,
+    onNetworkError: () -> Unit,
 ) {
     AndroidView(
         modifier = Modifier.fillMaxSize(),
@@ -221,7 +313,7 @@ fun ColorSplashWebView(
                 webViewClient = object : WebViewClient() {
                     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                         super.onPageStarted(view, url, favicon)
-                        onPageStarted()
+                        onPageStarted(url)
                     }
 
                     override fun onPageFinished(view: WebView?, url: String?) {
@@ -291,6 +383,18 @@ fun ColorSplashWebView(
                                 };
                             })();
                         """.trimIndent(), null)
+                    }
+
+                    override fun onReceivedError(
+                        view: WebView?,
+                        request: WebResourceRequest?,
+                        error: WebResourceError?
+                    ) {
+                        super.onReceivedError(view, request, error)
+                        // Only trigger for the main frame (not subresources like images/css)
+                        if (request?.isForMainFrame == true) {
+                            onNetworkError()
+                        }
                     }
 
                     override fun shouldOverrideUrlLoading(

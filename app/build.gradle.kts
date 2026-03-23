@@ -1,6 +1,38 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+}
+
+// Load version from version.properties
+val versionPropsFile = file("version.properties")
+val versionProps = Properties().apply {
+    if (versionPropsFile.exists()) {
+        versionPropsFile.inputStream().use { load(it) }
+    }
+}
+
+val appVersionCode = versionProps.getProperty("VERSION_CODE", "1").toInt()
+val versionMajor = versionProps.getProperty("VERSION_MAJOR", "1").toInt()
+val versionMinor = versionProps.getProperty("VERSION_MINOR", "0").toInt()
+val versionPatch = versionProps.getProperty("VERSION_PATCH", "0").toInt()
+val appVersionName = "$versionMajor.$versionMinor.$versionPatch"
+
+// Task to increment version code + patch on each build
+tasks.register("incrementVersion") {
+    doLast {
+        val newCode = appVersionCode + 1
+        val newPatch = versionPatch + 1
+        versionProps.setProperty("VERSION_CODE", newCode.toString())
+        versionProps.setProperty("VERSION_PATCH", newPatch.toString())
+        versionPropsFile.outputStream().use { versionProps.store(it, null) }
+        println("Version bumped to $versionMajor.$versionMinor.$newPatch (code: $newCode)")
+    }
+}
+
+tasks.matching { it.name == "assembleDebug" || it.name == "assembleRelease" }.configureEach {
+    dependsOn("incrementVersion")
 }
 
 android {
@@ -15,8 +47,8 @@ android {
         applicationId = "com.itdcsystems.color"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
