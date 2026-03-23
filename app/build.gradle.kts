@@ -69,6 +69,27 @@ android {
     buildFeatures {
         compose = true
     }
+    afterEvaluate {
+        tasks.matching { it.name.startsWith("package") && it.name.endsWith("Debug") || it.name.endsWith("Release") }.configureEach {
+            doLast {
+                // Re-read version.properties to get the incremented values
+                val currentProps = Properties().apply {
+                    versionPropsFile.inputStream().use { load(it) }
+                }
+                val currentCode = currentProps.getProperty("VERSION_CODE", "1")
+                val currentName = "${currentProps.getProperty("VERSION_MAJOR", "1")}.${currentProps.getProperty("VERSION_MINOR", "0")}.${currentProps.getProperty("VERSION_PATCH", "0")}"
+
+                val outputDir = file("${project.layout.buildDirectory.get()}/outputs/apk")
+                outputDir.walkTopDown().filter { it.extension == "apk" && it.name.startsWith("app-") }.forEach { apk ->
+                    val buildType = if (apk.name.contains("release")) "release" else "debug"
+                    val newName = "ColorSplash-v${currentName}-build${currentCode}-${buildType}.apk"
+                    val dest = File(apk.parentFile, newName)
+                    apk.copyTo(dest, overwrite = true)
+                    println("APK: ${dest.name}")
+                }
+            }
+        }
+    }
 }
 
 dependencies {
