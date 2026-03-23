@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+
+    <!-- Palette silhouette -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M512,152A360,360 0 1,1 152,512A360,360 0 1,1 512,152Z" />
+
+    <!-- Thumb hole cutout -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M230,512A80,80 0 1,0 390,512A80,80 0 1,0 230,512Z" />
+</vector>
